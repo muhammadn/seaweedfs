@@ -56,6 +56,7 @@ type MasterOptions struct {
 	electionTimeout    *time.Duration
 	raftHashicorp      *bool
 	raftBootstrap      *bool
+	grpcMasterPort     *int
 }
 
 func init() {
@@ -81,6 +82,8 @@ func init() {
 	m.electionTimeout = cmdMaster.Flag.Duration("electionTimeout", 10*time.Second, "election timeout of master servers")
 	m.raftHashicorp = cmdMaster.Flag.Bool("raftHashicorp", false, "use hashicorp raft")
 	m.raftBootstrap = cmdMaster.Flag.Bool("raftBootstrap", false, "Whether to bootstrap the Raft cluster")
+        m.grpcMasterPort = cmdMaster.Flag.Int("master.server.port.grpc", 19333, "master gpc server port to connect to")
+
 }
 
 var cmdMaster = &Command{
@@ -131,7 +134,8 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 	backend.LoadConfiguration(util.GetViper())
 
 	if *masterOption.portGrpc == 0 {
-		*masterOption.portGrpc = 10000 + *masterOption.port
+		*masterOption.portGrpc = *masterOption.grpcMasterPort
+		//*masterOption.portGrpc = 10000 + *masterOption.port
 	}
 	if *masterOption.ipBind == "" {
 		*masterOption.ipBind = *masterOption.ip
