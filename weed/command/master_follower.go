@@ -27,6 +27,7 @@ func init() {
 	mf.portGrpc = cmdMasterFollower.Flag.Int("port.grpc", 0, "grpc listen port")
 	mf.ipBind = cmdMasterFollower.Flag.String("ip.bind", "", "ip address to bind to. Default to localhost.")
 	mf.peers = cmdMasterFollower.Flag.String("masters", "localhost:9333", "all master nodes in comma separated ip:port list, example: 127.0.0.1:9093,127.0.0.1:9094,127.0.0.1:9095")
+	mf.grpcMasters = cmdMasterFollower.Flag.String("grpcMasters", "localhost:19333", "all grpc master nodes in comma separated ip:port list, example: 127.0.0.1:19093,127.0.0.1:19094,127.0.0.1:19095")
 
 	mf.ip = aws.String(util.DetectedHostAddress())
 	mf.metaFolder = aws.String("")
@@ -84,14 +85,15 @@ func startMasterFollower(masterOptions MasterOptions) {
 
 	// collect settings from main masters
 	masters := pb.ServerAddresses(*mf.peers).ToAddressMap()
+        grpcMasters := pb.ServerAddresses(*mf.grpcMasters).ToAddressMap()
 
 	var err error
 	grpcDialOption := security.LoadClientTLS(util.GetViper(), "grpc.master")
 	for i := 0; i < 10; i++ {
-		err = pb.WithOneOfGrpcMasterClients(false, masters, grpcDialOption, func(client master_pb.SeaweedClient) error {
+		err = pb.WithOneOfGrpcMasterClients(false, grpcMasters, grpcDialOption, func(client master_pb.SeaweedClient) error {
 			resp, err := client.GetMasterConfiguration(context.Background(), &master_pb.GetMasterConfigurationRequest{})
 			if err != nil {
-				return fmt.Errorf("get master grpc address %v configuration: %v", masters, err)
+				return fmt.Errorf("get master grpc address %v configuration: %v", grpcMasters, err)
 			}
 			masterOptions.defaultReplication = &resp.DefaultReplication
 			masterOptions.volumeSizeLimitMB = aws.Uint(uint(resp.VolumeSizeLimitMB))
@@ -117,7 +119,7 @@ func startMasterFollower(masterOptions MasterOptions) {
 	}
 
 	r := mux.NewRouter()
-	ms := weed_server.NewMasterServer(r, option, masters)
+	ms := weed_server.NewMasterServer(r, option, masters, nil)
 	listeningAddress := util.JoinHostPort(*masterOptions.ipBind, *masterOptions.port)
 	glog.V(0).Infof("Start Seaweed Master %s at %s", util.Version(), listeningAddress)
 	masterListener, masterLocalListener, e := util.NewIpAndLocalListeners(*masterOptions.ipBind, *masterOptions.port, 0)

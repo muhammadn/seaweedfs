@@ -56,6 +56,7 @@ type MasterOptions struct {
 	electionTimeout    *time.Duration
 	raftHashicorp      *bool
 	raftBootstrap      *bool
+	grpcMasters        *string
 }
 
 func init() {
@@ -66,6 +67,7 @@ func init() {
 	m.ipBind = cmdMaster.Flag.String("ip.bind", "", "ip address to bind to. If empty, default to same as -ip option.")
 	m.metaFolder = cmdMaster.Flag.String("mdir", os.TempDir(), "data directory to store meta data")
 	m.peers = cmdMaster.Flag.String("peers", "", "all master nodes in comma separated ip:port list, example: 127.0.0.1:9093,127.0.0.1:9094,127.0.0.1:9095")
+        m.grpcMasters = cmdMaster.Flag.String("grpcMasters", "", "all gRPC master nodes in comma separated ip:port list, example: 127.0.0.1:9093,127.0.0.1:9094,127.0.0.1:9095")
 	m.volumeSizeLimitMB = cmdMaster.Flag.Uint("volumeSizeLimitMB", 30*1000, "Master stops directing writes to oversized volumes.")
 	m.volumePreallocate = cmdMaster.Flag.Bool("volumePreallocate", false, "Preallocate disk space for volumes.")
 	// m.pulseSeconds = cmdMaster.Flag.Int("pulseSeconds", 5, "number of seconds between heartbeats")
@@ -144,8 +146,15 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 		masterPeers[string(peer)] = peer
 	}
 
+        myGrpcMasterAddress, grpcPeers := checkMasterGrpcPeers(*masterOption.ip, *masterOption.port, *masterOption.portGrpc, *masterOption.grpcMasters)
+
+        grpcMasters := make(map[string]pb.ServerAddress)
+        for _, peer := range grpcPeers {
+                grpcMasters[string(peer)] = peer
+        }
+
 	r := mux.NewRouter()
-	ms := weed_server.NewMasterServer(r, masterOption.toMasterOption(masterWhiteList), masterPeers)
+	ms := weed_server.NewMasterServer(r, masterOption.toMasterOption(masterWhiteList), masterPeers, grpcMasters)
 	listeningAddress := util.JoinHostPort(*masterOption.ipBind, *masterOption.port)
 	glog.V(0).Infof("Start Seaweed Master %s at %s", util.Version(), listeningAddress)
 	masterListener, masterLocalListener, e := util.NewIpAndLocalListeners(*masterOption.ipBind, *masterOption.port, 0)
@@ -157,8 +166,10 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 	metaDir := path.Join(*masterOption.metaFolder, fmt.Sprintf("m%d", *masterOption.port))
 	raftServerOption := &weed_server.RaftServerOption{
 		GrpcDialOption:    security.LoadClientTLS(util.GetViper(), "grpc.master"),
-		Peers:             masterPeers,
-		ServerAddr:        myMasterAddress,
+//		Peers:             masterPeers,
+//		ServerAddr:        myMasterAddress,
+                Peers:             grpcMasters,
+		ServerAddr:        myGrpcMasterAddress,
 		DataDir:           util.ResolvePath(metaDir),
 		Topo:              ms.Topo,
 		RaftResumeState:   *masterOption.raftResumeState,
@@ -263,6 +274,28 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 		}
 	})
 	select {}
+}
+
+func checkMasterGrpcPeers(masterIp string, masterPort int, masterGrpcPort int, peers string) (masterAddress pb.ServerAddress, cleanedPeers []pb.ServerAddress) {
+        glog.V(0).Infof("current: %s:%d peers:%s", masterIp, masterPort, peers)
+        masterAddress = pb.NewServerAddress(masterIp, masterPort, masterGrpcPort)
+        cleanedPeers = pb.ServerAddresses(peers).ToAddresses()
+
+        hasSelf := false
+        for _, peer := range cleanedPeers {
+                if peer.ToHttpAddress() == masterAddress.ToHttpAddress() {
+                        hasSelf = true
+                        break
+                }
+        }
+
+        if !hasSelf {
+                cleanedPeers = append(cleanedPeers, masterAddress)
+        }
+        if len(cleanedPeers)%2 == 0 {
+                glog.Fatalf("Only odd number of masters are supported: %+v", cleanedPeers)
+        }
+        return
 }
 
 func checkPeers(masterIp string, masterPort int, masterGrpcPort int, peers string) (masterAddress pb.ServerAddress, cleanedPeers []pb.ServerAddress) {

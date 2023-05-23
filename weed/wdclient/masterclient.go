@@ -26,6 +26,7 @@ type MasterClient struct {
 	currentMasterLock sync.RWMutex
 	masters           map[string]pb.ServerAddress
 	grpcDialOption    grpc.DialOption
+	grpcMasters       map[string]pb.ServerAddress
 
 	*vidMap
 	vidMapCacheSize  int
@@ -33,13 +34,14 @@ type MasterClient struct {
 	OnPeerUpdateLock sync.RWMutex
 }
 
-func NewMasterClient(grpcDialOption grpc.DialOption, filerGroup string, clientType string, clientHost pb.ServerAddress, clientDataCenter string, rack string, masters map[string]pb.ServerAddress) *MasterClient {
+func NewMasterClient(grpcDialOption grpc.DialOption, filerGroup string, clientType string, clientHost pb.ServerAddress, clientDataCenter string, rack string, masters map[string]pb.ServerAddress, grpcMasters map[string]pb.ServerAddress) *MasterClient {
 	return &MasterClient{
 		FilerGroup:      filerGroup,
 		clientType:      clientType,
 		clientHost:      clientHost,
 		rack:            rack,
 		masters:         masters,
+		grpcMasters:     grpcMasters,
 		grpcDialOption:  grpcDialOption,
 		vidMap:          newVidMap(clientDataCenter),
 		vidMapCacheSize: 5,
@@ -61,7 +63,7 @@ func (mc *MasterClient) LookupFileIdWithFallback(fileId string) (fullUrls []stri
 	if err == nil && len(fullUrls) > 0 {
 		return
 	}
-	err = pb.WithMasterClient(false, mc.GetMaster(), mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
+	err = pb.WithMasterGrpcClient(false, mc.GetMaster(), mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
 		resp, err := client.LookupVolume(context.Background(), &master_pb.LookupVolumeRequest{
 			VolumeOrFileIds: []string{fileId},
 		})
@@ -110,7 +112,7 @@ func (mc *MasterClient) GetMaster() pb.ServerAddress {
 
 func (mc *MasterClient) GetMasters() map[string]pb.ServerAddress {
 	mc.WaitUntilConnected()
-	return mc.masters
+	return mc.grpcMasters
 }
 
 func (mc *MasterClient) WaitUntilConnected() {
@@ -132,11 +134,11 @@ func (mc *MasterClient) KeepConnectedToMaster() {
 }
 
 func (mc *MasterClient) FindLeaderFromOtherPeers(myMasterAddress pb.ServerAddress) (leader string) {
-	for _, master := range mc.masters {
+	for _, master := range mc.grpcMasters {
 		if master == myMasterAddress {
 			continue
 		}
-		if grpcErr := pb.WithMasterClient(false, master, mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
+		if grpcErr := pb.WithMasterGrpcClient(false, master, mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
 			defer cancel()
 			resp, err := client.GetMasterConfiguration(ctx, &master_pb.GetMasterConfigurationRequest{})
@@ -159,7 +161,7 @@ func (mc *MasterClient) FindLeaderFromOtherPeers(myMasterAddress pb.ServerAddres
 
 func (mc *MasterClient) tryAllMasters() {
 	var nextHintedLeader pb.ServerAddress
-	for _, master := range mc.masters {
+	for _, master := range mc.grpcMasters {
 		nextHintedLeader = mc.tryConnectToMaster(master)
 		for nextHintedLeader != "" {
 			nextHintedLeader = mc.tryConnectToMaster(nextHintedLeader)
@@ -171,7 +173,7 @@ func (mc *MasterClient) tryAllMasters() {
 func (mc *MasterClient) tryConnectToMaster(master pb.ServerAddress) (nextHintedLeader pb.ServerAddress) {
 	glog.V(1).Infof("%s.%s masterClient Connecting to master %v", mc.FilerGroup, mc.clientType, master)
 	stats.MasterClientConnectCounter.WithLabelValues("total").Inc()
-	gprcErr := pb.WithMasterClient(true, master, mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
+	gprcErr := pb.WithMasterGrpcClient(true, master, mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -298,7 +300,7 @@ func (mc *MasterClient) updateVidMap(resp *master_pb.KeepConnectedResponse) {
 
 func (mc *MasterClient) WithClient(streamingMode bool, fn func(client master_pb.SeaweedClient) error) error {
 	return util.Retry("master grpc", func() error {
-		return pb.WithMasterClient(streamingMode, mc.GetMaster(), mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
+		return pb.WithMasterGrpcClient(streamingMode, mc.GetMaster(), mc.grpcDialOption, false, func(client master_pb.SeaweedClient) error {
 			return fn(client)
 		})
 	})

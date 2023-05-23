@@ -59,7 +59,7 @@ func (sa ServerAddress) ToHttpAddress() string {
 	return string(sa)
 }
 
-func (sa ServerAddress) ToGrpcAddress() string {
+/* func (sa ServerAddress) ToGrpcAddress() string {
 	portsSepIndex := strings.LastIndex(string(sa), ":")
 	if portsSepIndex < 0 {
 		return string(sa)
@@ -74,7 +74,25 @@ func (sa ServerAddress) ToGrpcAddress() string {
 		return net.JoinHostPort(host, ports[sepIndex+1:])
 	}
 	return ServerToGrpcAddress(string(sa))
+} */
+
+func (sa ServerAddress) ToGrpcAddress() string {
+        portsSepIndex := strings.LastIndex(string(sa), ":")
+        if portsSepIndex < 0 {
+                return string(sa)
+        }
+        if portsSepIndex+1 >= len(sa) {
+		return string(sa)
+        }
+        ports := string(sa[portsSepIndex+1:])
+        sepIndex := strings.LastIndex(ports, ".")
+        if sepIndex >= 0 {
+                host := string(sa[0:portsSepIndex])
+                return net.JoinHostPort(host, ports[sepIndex+1:])
+        }
+        return ServerToMasterGrpcAddress(string(sa))
 }
+
 
 func (sa ServerAddresses) ToAddresses() (addresses []ServerAddress) {
 	parts := strings.Split(string(sa), ",")

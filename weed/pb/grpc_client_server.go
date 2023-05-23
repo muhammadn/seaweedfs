@@ -186,7 +186,7 @@ func hostAndPort(address string) (host string, port uint64, err error) {
 	return address[:colonIndex], port, err
 }
 
-func ServerToGrpcAddress(server string) (serverGrpcAddress string) {
+/* func ServerToGrpcAddress(server string) (serverGrpcAddress string) {
 
 	host, port, parseErr := hostAndPort(server)
 	if parseErr != nil {
@@ -194,8 +194,22 @@ func ServerToGrpcAddress(server string) (serverGrpcAddress string) {
 	}
 
 	grpcPort := int(port) + 10000
+	glog.Infof("Accessing port %d", grpcPort)
 
 	return util.JoinHostPort(host, grpcPort)
+} */
+
+func ServerToMasterGrpcAddress(server string) (serverGrpcAddress string) {
+
+        host, grpcPort, parseErr := hostAndPort(server)
+        if parseErr != nil {
+                glog.Fatalf("server address %s parse error: %v", server, parseErr)
+        }
+
+        port := int(grpcPort)
+        glog.Infof("Access GRPC Port %d", port)
+
+        return util.JoinHostPort(host, port)
 }
 
 func GrpcAddressToServerAddress(grpcAddress string) (serverAddress string) {
@@ -210,10 +224,23 @@ func GrpcAddressToServerAddress(grpcAddress string) (serverAddress string) {
 }
 
 func WithMasterClient(streamingMode bool, master ServerAddress, grpcDialOption grpc.DialOption, waitForReady bool, fn func(client master_pb.SeaweedClient) error) error {
+        glog.Infof("WithMasterClient")
+	
 	return WithGrpcClient(streamingMode, 0, func(grpcConnection *grpc.ClientConn) error {
 		client := master_pb.NewSeaweedClient(grpcConnection)
 		return fn(client)
 	}, master.ToGrpcAddress(), waitForReady, grpcDialOption)
+
+}
+
+// testing
+func WithMasterGrpcClient(streamingMode bool, master ServerAddress, grpcDialOption grpc.DialOption, waitForReady bool, fn func(client master_pb.SeaweedClient) error) error {
+        glog.Infof("WithMasterGrpcClient")
+
+        return WithGrpcClient(streamingMode, 0, func(grpcConnection *grpc.ClientConn) error {
+                client := master_pb.NewSeaweedClient(grpcConnection)
+                return fn(client)
+        }, master.ToGrpcAddress(), waitForReady, grpcDialOption)
 
 }
 
@@ -234,6 +261,7 @@ func WithBrokerClient(streamingMode bool, broker ServerAddress, grpcDialOption g
 }
 
 func WithOneOfGrpcMasterClients(streamingMode bool, masterGrpcAddresses map[string]ServerAddress, grpcDialOption grpc.DialOption, fn func(client master_pb.SeaweedClient) error) (err error) {
+	glog.Infof("WithOneOfGrpcMasterClients")
 
 	for _, masterGrpcAddress := range masterGrpcAddresses {
 		err = WithGrpcClient(streamingMode, 0, func(grpcConnection *grpc.ClientConn) error {

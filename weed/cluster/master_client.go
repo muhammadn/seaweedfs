@@ -10,6 +10,7 @@ import (
 )
 
 func ListExistingPeerUpdates(master pb.ServerAddress, grpcDialOption grpc.DialOption, filerGroup string, clientType string) (existingNodes []*master_pb.ClusterNodeUpdate) {
+	glog.Infof("ListExistingPeerUpdates")
 
 	if grpcErr := pb.WithMasterClient(false, master, grpcDialOption, false, func(client master_pb.SeaweedClient) error {
 		resp, err := client.ListClusterNodes(context.Background(), &master_pb.ListClusterNodesRequest{
