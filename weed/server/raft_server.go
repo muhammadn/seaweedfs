@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"time"
+	"regexp"
 
 	"google.golang.org/grpc"
 
@@ -145,9 +146,21 @@ func NewRaftServer(option *RaftServerOption) (*RaftServer, error) {
 	}
 
 	for name, peer := range s.peers {
-		if err := s.raftServer.AddPeer(name, peer.ToGrpcAddress()); err != nil {
-			return nil, err
-		}
+                // exit early if it is docker local IP
+                m, err := regexp.MatchString("^172.17.*|127.0.1.1", string(peer))
+                if err != nil {
+                        glog.Infof("Cannot regex internal docker host IP")
+                }
+
+                if m {
+                        continue
+                } else {
+			glog.Infof("Peer Raft: %s", string(peer))
+                        if err := s.raftServer.AddPeer(name, peer.ToGrpcAddress()); err != nil {
+                                return nil, err
+                        }
+
+                }
 	}
 
 	// Remove deleted peers
