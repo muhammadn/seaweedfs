@@ -207,7 +207,11 @@ func ServerToMasterGrpcAddress(server string) (serverGrpcAddress string) {
         }
 
         port := int(grpcPort)
-        glog.Infof("Access GRPC Port %d", port)
+	// exit early if it is docker local IP
+	if port == 9333 {
+                return
+	}
+        glog.Infof("Access GRPC Host %s and Port %d", host, port)
 
         return util.JoinHostPort(host, port)
 }
