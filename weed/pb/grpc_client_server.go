@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"regexp"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/volume_server_pb"
@@ -208,9 +209,17 @@ func ServerToMasterGrpcAddress(server string) (serverGrpcAddress string) {
 
         port := int(grpcPort)
 	// exit early if it is docker local IP
-	if port == 9333 {
-                return
+	m, err := regexp.MatchString("^172.17.*", server)
+	if err != nil {
+		glog.Fatalf("Cannot regex internal docker host IP")
 	}
+
+	if m {
+		return
+	} else {
+		fmt.Println("Carry on...")
+	}
+
         glog.Infof("Access GRPC Host %s and Port %d", host, port)
 
         return util.JoinHostPort(host, port)
