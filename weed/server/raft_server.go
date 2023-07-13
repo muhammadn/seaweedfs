@@ -153,7 +153,11 @@ func NewRaftServer(option *RaftServerOption) (*RaftServer, error) {
                 }
 
                 if m {
-                        continue
+		//	peer = os.Getenv("NOMAD_HOST_ADDR_grpc") // override the peer if peer IP/m is docker0 interface 
+                //        if err := s.raftServer.AddPeer(name, peer.ToGrpcAddress()); err != nil {
+                //                return nil, err
+                //        }
+		        continue
                 } else {
 			glog.Infof("Peer Raft: %s", string(peer))
                         if err := s.raftServer.AddPeer(name, peer.ToGrpcAddress()); err != nil {
